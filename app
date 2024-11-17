@@ -1,6 +1,7 @@
 import telebot
 from telebot import types
 from database import session, Doctor, Patient  # Импортируем сессии и модель из вашего database.py
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 bot = telebot.TeleBot('8082732708:AAEvWhwSEzRtilpqXWX8TWlnjJfxXHujHdY')  # Замените на ваш токен
 
@@ -164,39 +165,83 @@ def offer_next_action(chat_id):
 def commands(chat_id):
     if role == 'Врач':
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        btn_view = types.KeyboardButton('Открыть список пациентов')
+        btn_view = types.KeyboardButton('select_doctor_')
         btn_add = types.KeyboardButton('Добавить пациента')
         markup.add(btn_add, btn_view)
     if role == 'Пациент':
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        btn_doc = types.KeyboardButton('Посмотреть врача')
+        btn_doc = types.KeyboardButton('Выбрать врача')
         btn_bol = types.KeyboardButton('Посмотреть болезнь')
         markup.add(btn_doc, btn_bol)
 
     bot.send_message(chat_id, 'Выберите дальнейшие действия:', reply_markup=markup)
 
 #Список врачей
-@bot.message_handler(func=lambda message: message.text == 'Посмотреть врача')
+@bot.message_handler(func=lambda message: message.text == 'Выбрать врача')
 def handle_view_doctors(message):
     show_doctors(message)
 
 # Показать список врачей для пациента
 def show_doctors(message):
-    #Поиск всех врачей
+    
     doctors = session.query(Doctor).filter_by(role='врач').all()
 
     if not doctors:
         bot.send_message(message.chat.id, 'В базе данных пока нет врачей.')
         return
 
-    #Создание списка
-    doctor_list = "Список врачей:\n"
+    
+    markup = InlineKeyboardMarkup()
     for doctor in doctors:
-        doctor_list += f"- {doctor.username} (Role: {doctor.role})\n"
+        button = InlineKeyboardButton(
+            text=f"{doctor.username} (Role: {doctor.role})",
+            callback_data=f"select_doctor_{doctor.id}"
+        )
+        markup.add(button)
+
+    bot.send_message(message.chat.id, 'Выберите врача для привязки:', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('select_doctor_'))
+def handle_doctor_selection(call):
+    
+    doctor_id = int(call.data.split('_')[-1])
 
     
-    bot.send_message(message.chat.id, doctor_list)
+    patient = session.query(Patient).filter_by(username=call.message.chat.username).first()
 
+    if not patient:
+        bot.send_message(call.message.chat.id, 'Ошибка: пациент не найден.')
+        return
 
+    
+    patient.doctor_id = doctor_id
+    session.commit()
+
+    
+    doctor = session.query(Doctor).get(doctor_id)
+    bot.send_message(call.message.chat.id, f'Вы успешно привязаны к врачу {doctor.username}.')
+
+@bot.message_handler(commands=['view_patients'])
+def view_linked_patients(message):
+    
+    doctor = session.query(Doctor).filter_by(username=message.chat.username).first()
+
+    if not doctor:
+        bot.send_message(message.chat.id, 'Ошибка: доктор не найден.')
+        return
+
+    
+    patients = doctor.patients
+
+    if not patients:
+        bot.send_message(message.chat.id, 'У вас нет привязанных пациентов.')
+        return
+
+    
+    response = "Список привязанных пациентов:\n"
+    for patient in patients:
+        response += f"- {patient.username}\n"
+
+    bot.send_message(message.chat.id, response)
 
 bot.polling(non_stop=True)
