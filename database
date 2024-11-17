@@ -1,0 +1,18 @@
+def sum_positive_numbers():
+    total_sum = 0  # Переменная для хранения суммы
+
+    while True:
+        try:
+            number = int(input("Введите число (0 для завершения): "))
+            
+            if number == 0:
+                break  # Завершаем ввод, если введено 0
+            elif number > 0:
+                total_sum += number  # Добавляем положительное число к сумме
+                
+        except ValueError:
+            print("Пожалуйста, введите целое число.")
+    
+    print("Сумма положительных чисел:", total_sum)
+
+sum_positive_numbers()
